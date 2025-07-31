@@ -1,0 +1,52 @@
+<nav class="w-full bg-white shadow-sm border-b border-gray-200">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center h-16">
+      
+      <!-- Logo -->
+      <div class="flex items-center gap-2">
+        <img src="assets/logo.png" alt="TrustFund" class="h-8 w-auto" />
+        <span class="text-xl font-bold text-gray-800">TrustFund</span>
+      </div>
+
+      <!-- Desktop Menu -->
+      <div class="hidden md:flex items-center gap-6">
+        <a href="#" class="text-gray-700 hover:text-blue-600 transition">Maqsadlar</a>
+        <a href="#" class="text-gray-700 hover:text-blue-600 transition">Yordam berish</a>
+        <a href="#" class="text-gray-700 hover:text-blue-600 transition">Blog</a>
+        <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+          + Yangi Maqsad
+        </button>
+        <img src="assets/avatar.png" alt="Avatar" class="h-9 w-9 rounded-full object-cover border" />
+      </div>
+
+      <!-- Hamburger -->
+      <div class="md:hidden">
+        <button (click)="toggleMenu()" class="text-gray-700 focus:outline-none">
+          <svg *ngIf="!isMenuOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          <svg *ngIf="isMenuOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Menu -->
+  <div *ngIf="isMenuOpen" class="md:hidden px-4 pb-4 space-y-2">
+    <a href="#" class="block text-gray-700 hover:text-blue-600">Maqsadlar</a>
+    <a href="#" class="block text-gray-700 hover:text-blue-600">Yordam berish</a>
+    <a href="#" class="block text-gray-700 hover:text-blue-600">Blog</a>
+    <button class="w-full bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+      + Yangi Maqsad
+    </button>
+    <div class="flex justify-end pt-2">
+      <img src="assets/avatar.png" alt="Avatar" class="h-9 w-9 rounded-full object-cover border" />
+    </div>
+  </div>
+</nav>

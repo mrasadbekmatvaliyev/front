@@ -1,0 +1,17 @@
+<div class="hero">
+  <h1>Xush kelibsiz!</h1>
+  <p>Bizning platformamiz orqali eng yaxshi xizmatlardan foydalaning.</p>
+  <button>Ko‘proq Bilish</button>
+</div>
+
+<div class="services">
+  <h2>Xizmatlarimiz</h2>
+  <div class="service" *ngFor="let service of services">
+    <h3>{{ service.title }}</h3>
+    <p>{{ service.description }}</p>
+  </div>
+</div>
+
+<footer>
+  <p>&copy; 2025 Barcha huquqlar himoyalangan</p>
+</footer>

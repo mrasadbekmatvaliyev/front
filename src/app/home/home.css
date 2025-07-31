@@ -1,0 +1,29 @@
+.hero {
+  text-align: center;
+  background-color: #f3f3f3;
+  padding: 40px 20px;
+}
+
+.hero h1 {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
+.services {
+  padding: 30px 20px;
+  background-color: #fff;
+}
+
+.service {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+footer {
+  text-align: center;
+  padding: 15px;
+  background-color: #333;
+  color: #fff;
+}

@@ -1,0 +1,162 @@
+.notification-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.notification {
+  min-width: 320px;
+  max-width: 500px;
+  padding: 0;
+  border-radius: 12px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  pointer-events: auto;
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  position: relative;
+}
+
+.notification-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.notification-message {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.notification-close:hover {
+  transform: scale(1.1);
+}
+
+/* Success notification */
+.notification-success .notification-content {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.notification-success .notification-close {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.notification-success .notification-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* Error notification */
+.notification-error .notification-content {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+}
+
+.notification-error .notification-close {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.notification-error .notification-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* Warning notification */
+.notification-warning .notification-content {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+.notification-warning .notification-close {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.notification-warning .notification-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* Info notification */
+.notification-info .notification-content {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+}
+
+.notification-info .notification-close {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.notification-info .notification-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* Hover effect */
+.notification:hover {
+  transform: translateX(-5px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .notification-container {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+  }
+  
+  .notification {
+    min-width: auto;
+    max-width: none;
+  }
+  
+  .notification:hover {
+    transform: translateX(0) scale(1.01);
+  }
+}

@@ -1,0 +1,82 @@
+.container{
+    width: auto;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    
+}
+
+.code-form {
+  max-width: 300px;
+  margin: auto;
+  text-align: center;
+
+}
+
+.code-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.code-inputs input {
+  width: 40px;
+  height: 50px;
+  text-align: center;
+  font-size: 24px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  outline: none;
+}
+
+input:focus {
+  border-color: #0057e7;
+  box-shadow: 0 0 5px #0057e7;
+}
+
+/* login.component.css */
+.logo-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 40px;
+}
+
+.logo {
+  width: 150px;
+  height: auto;
+  max-width: 100%;
+  /* Optimize for better performance */
+  will-change: auto;
+  transform: translateZ(0); /* Force hardware acceleration */
+}
+
+/* Responsive logo sizes */
+@media (max-width: 768px) {
+  .logo {
+    width: 100px;
+  }
+  
+  .logo-wrapper {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    width: 80px;
+  }
+}
+
+/* Optimize image loading */
+.logo-wrapper picture {
+  display: block;
+}
+
+.logo-wrapper img {
+  display: block;
+  margin: 0 auto;
+}
+
