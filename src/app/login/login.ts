@@ -14,7 +14,7 @@ import { NotificationService } from '../notification/notification.service';
 })
 export class LoginComponent {
   codeForm: FormGroup;
-  codeLength = 4;
+  codeLength = 5; // ✅ 5 xonali kod
   codeControls = Array(this.codeLength).fill(0);
   isSubmitted = false;
 
@@ -29,19 +29,14 @@ export class LoginComponent {
         this.verifyCode();
       }
     });
-    
   }
-  
 
   onInput(event: any, index: number) {
     const input = event.target;
     let value = input.value;
 
-    // Faqat raqamlarni qabul qilish
     value = value.replace(/[^0-9]/g, '');
     input.value = value;
-    
-    // FormControl qiymatini yangilash
     this.codeForm.get(index.toString())?.setValue(value);
 
     if (value.length === 1 && index < this.codeLength - 1) {
@@ -60,54 +55,40 @@ export class LoginComponent {
 
   onPaste(event: ClipboardEvent, index: number) {
     event.preventDefault();
-    
-    // Clipboard dan matnni olish
     const pastedText = event.clipboardData?.getData('text') || '';
-    
-    // Faqat raqamlarni ajratib olish
     const numbers = pastedText.replace(/[^0-9]/g, '');
     
     if (numbers.length > 0) {
-      // Har bir raqamni tegishli inputga joylashtirish
       for (let i = 0; i < Math.min(numbers.length, this.codeLength); i++) {
         const targetIndex = index + i;
         if (targetIndex < this.codeLength) {
           this.codeForm.get(targetIndex.toString())?.setValue(numbers[i]);
-          
-          // Input elementining qiymatini ham yangilash
           const inputElement = event.target as HTMLInputElement;
           const targetInput = inputElement.parentElement?.children[targetIndex] as HTMLInputElement;
-          if (targetInput) {
-            targetInput.value = numbers[i];
-          }
+          if (targetInput) targetInput.value = numbers[i];
         }
       }
-      
-      // Oxirgi to'ldirilgan inputdan keyingisiga focus qilish
+
       const lastFilledIndex = Math.min(index + numbers.length - 1, this.codeLength - 1);
       const nextIndex = Math.min(lastFilledIndex + 1, this.codeLength - 1);
       const nextInput = (event.target as HTMLInputElement).parentElement?.children[nextIndex] as HTMLInputElement;
-      if (nextInput) {
-        nextInput.focus();
-      }
+      if (nextInput) nextInput.focus();
     }
   }
 
   verifyCode() {
     this.isSubmitted = true;
-
     const codeStr = Object.values(this.codeForm.value).join('');
     const code = parseInt(codeStr, 10);
 
-    this.http.post('https://myjavauzapp.loca.lt/api/user/verify', { code })
+    this.http.post('https://servisauth.onrender.com/api/verify', { code })
       .subscribe({
         next: res => {
           console.log('✅ Kod to\'g\'ri:', res);
           this.notificationService.success('Kirish muvaffaqiyatli! Xush kelibsiz!', 4000);
-          // Bosh sahifaga yo'naltirish
           setTimeout(() => {
             this.router.navigate(['/home']);
-          }, 10); // 1 soniya kutib, keyin yo'naltirish
+          }, 10);
         },
         error: err => {
           console.error('❌ Xatolik:', err);
