@@ -1,0 +1,122 @@
+:root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #142233;
+  background: #f4f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 56px 20px;
+}
+
+.hero,
+.policy-header {
+  margin-bottom: 36px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f6fdc;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 48px);
+  line-height: 1.15;
+}
+
+.lead {
+  max-width: 760px;
+  margin: 16px 0 0;
+  color: #40566f;
+}
+
+.features {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.feature-card {
+  padding: 18px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #dbe4ef;
+}
+
+.feature-card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.feature-card p {
+  margin: 0;
+  color: #4e6177;
+}
+
+.policy-page .policy-content {
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #dbe4ef;
+}
+
+.policy-content h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.policy-content p {
+  margin: 0 0 20px;
+  color: #3f556d;
+}
+
+a {
+  color: inherit;
+}
+
+.button {
+  display: inline-block;
+  margin-top: 24px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  color: #ffffff;
+  background: #0f6fdc;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.button:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.button.secondary {
+  background: #1d3552;
+}
