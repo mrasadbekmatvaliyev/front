@@ -29,6 +29,49 @@ body {
   padding: 56px 20px;
 }
 
+.language-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.language-switcher-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #40566f;
+}
+
+.language-switcher-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.language-button {
+  padding: 8px 12px;
+  border: 1px solid #cdd8e5;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #284058;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.language-button:hover {
+  border-color: #0f6fdc;
+  color: #0f6fdc;
+}
+
+.language-button.active {
+  border-color: #0f6fdc;
+  background: #0f6fdc;
+  color: #ffffff;
+}
+
 .hero,
 .policy-header {
   margin-bottom: 36px;
@@ -119,4 +162,10 @@ a {
 
 .button.secondary {
   background: #1d3552;
+}
+
+@media (max-width: 640px) {
+  .language-switcher {
+    justify-content: flex-start;
+  }
 }
