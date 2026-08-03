@@ -1,4 +1,6 @@
-const DEFAULT_API_BASE = "https://44-212-221-136.sslip.io";
+const BACKEND_API_BASE = "https://44-212-221-136.sslip.io";
+const API_PROXY_BASE = "/api";
+const DEFAULT_API_BASE = defaultApiBase();
 const STORAGE = {
   apiBase: "voha.apiBase",
   accessToken: "voha.accessToken",
@@ -12,7 +14,7 @@ const STORAGE = {
 const app = document.getElementById("app");
 
 const state = {
-  apiBase: cleanBase(localStorage.getItem(STORAGE.apiBase) || DEFAULT_API_BASE),
+  apiBase: initialApiBase(),
   accessToken: localStorage.getItem(STORAGE.accessToken) || "",
   refreshToken: localStorage.getItem(STORAGE.refreshToken) || "",
   user: readJson(STORAGE.user, null),
@@ -64,8 +66,35 @@ const NAV_ITEMS = [
   { id: "profile", label: "Profil", icon: "PR" },
 ];
 
+function isLocalFrontend() {
+  const hostname = window.location.hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+}
+
+function defaultApiBase() {
+  return isLocalFrontend() ? BACKEND_API_BASE : API_PROXY_BASE;
+}
+
+function normalizeBase(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isDirectBackendBase(value) {
+  const base = normalizeBase(value);
+  return base === BACKEND_API_BASE || base === BACKEND_API_BASE.replace(/^https:/i, "http:");
+}
+
+function initialApiBase() {
+  const saved = normalizeBase(localStorage.getItem(STORAGE.apiBase));
+  if (!isLocalFrontend() && isDirectBackendBase(saved)) {
+    localStorage.setItem(STORAGE.apiBase, API_PROXY_BASE);
+    return API_PROXY_BASE;
+  }
+  return cleanBase(saved || DEFAULT_API_BASE);
+}
+
 function cleanBase(value) {
-  return String(value || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+  return normalizeBase(value || defaultApiBase()) || defaultApiBase();
 }
 
 function readJson(key, fallback) {
@@ -119,6 +148,9 @@ function assetUrl(value) {
 }
 
 function wsBase() {
+  if (state.apiBase.startsWith("/")) {
+    return BACKEND_API_BASE.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+  }
   return state.apiBase.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
 }
 
