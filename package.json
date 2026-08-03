@@ -4,7 +4,9 @@
   "private": true,
   "description": "Static frontend for the Voha FastAPI server.",
   "scripts": {
-    "dev": "python3 -m http.server 3000",
-    "start": "python3 -m http.server 3000"
+    "build": "node scripts/build.js",
+    "dev": "python3 -m http.server ${PORT:-3000}",
+    "preview": "npm run build && python3 -m http.server ${PORT:-4173} --directory dist",
+    "start": "python3 -m http.server ${PORT:-3000}"
   }
 }
