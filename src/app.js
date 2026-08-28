@@ -640,7 +640,6 @@ function renderAuth() {
         <div class="auth-card panel">
           <div class="panel-body">
             ${state.notice ? `<div class="alert ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
-            ${state.loading ? `<div class="alert">Yuklanmoqda...</div>` : ""}
             ${!isOtp && !isRegister ? renderPhoneForm() : ""}
             ${isOtp && !isRegister ? renderOtpForm() : ""}
             ${isRegister ? renderRegisterForm() : ""}
@@ -728,7 +727,6 @@ function renderShell() {
         </header>
         <section class="content">
           ${state.notice ? `<div class="alert ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
-          ${state.loading ? `<div class="alert">Yuklanmoqda...</div>` : ""}
           ${renderView()}
         </section>
       </main>
