@@ -49,6 +49,7 @@ const state = {
     presence: null,
     pushLogs: null,
     adminKey: localStorage.getItem(STORAGE.adminKey) || "",
+    blockStatus: null,
   },
   cart: readJson(STORAGE.cart, { marketId: null, items: {} }),
   wsChat: null,
@@ -828,21 +829,42 @@ function empty(text) {
 function renderContacts() {
   return `
     <div class="split">
-      <section class="panel">
-        <div class="panel-header">
-          <div><h3>Qidirish</h3><p>E.164 telefon formatida</p></div>
-        </div>
-        <div class="panel-body stack">
-          <form class="form-grid" data-action="search-user">
-            <div class="field">
-              <label>Telefon</label>
-              <input name="phone" placeholder="+998901234567" required>
-            </div>
-            <button class="btn primary" type="submit">Qidirish</button>
-          </form>
-          ${state.data.searchUser ? renderSearchResult(state.data.searchUser) : ""}
-        </div>
-      </section>
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-header">
+            <div><h3>Qidirish</h3><p>E.164 telefon formatida</p></div>
+          </div>
+          <div class="panel-body stack">
+            <form class="form-grid" data-action="search-user">
+              <div class="field">
+                <label>Telefon</label>
+                <input name="phone" placeholder="+998901234567" required>
+              </div>
+              <button class="btn primary" type="submit">Qidirish</button>
+            </form>
+            ${state.data.searchUser ? renderSearchResult(state.data.searchUser) : ""}
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <div><h3>Blok boshqaruvi</h3><p>ID orqali bloklash / blokdan chiqarish</p></div>
+          </div>
+          <div class="panel-body stack">
+            <form class="form-grid" data-action="manage-block-user">
+              <div class="field">
+                <label>User ID</label>
+                <input name="user_id" type="number" min="1" placeholder="12" required>
+              </div>
+              <div class="actions">
+                <button class="btn warning" type="button" data-action="unblock-user-form">Blokdan chiqarish</button>
+                <button class="btn danger" type="button" data-action="block-user-form">Bloklash</button>
+                <button class="btn" type="button" data-action="check-block-form">Status</button>
+              </div>
+            </form>
+            ${state.data.blockStatus ? `<div class="alert ${state.data.blockStatus.is_blocked ? "danger" : "ok"}">User #${state.data.blockStatus.user_id}: ${state.data.blockStatus.is_blocked ? "Bloklangan" : "Bloklanmagan"}</div>` : ""}
+          </div>
+        </section>
+      </div>
       <section class="panel">
         <div class="panel-header">
           <div><h3>Kontaktlar</h3><p>${state.data.contacts.length} ta kontakt</p></div>
@@ -870,6 +892,8 @@ function renderSearchResult(user) {
         <div class="actions">
           <button class="btn primary" type="button" data-action="add-contact-result" data-user-id="${user.id}">Qo'shish</button>
           <button class="btn" type="button" data-action="start-chat" data-user-id="${user.id}">Chat</button>
+          <button class="btn warning" type="button" data-action="unblock-user" data-user-id="${user.id}">Blokdan chiqarish</button>
+          <button class="btn danger" type="button" data-action="block-user" data-user-id="${user.id}">Bloklash</button>
         </div>
       </div>
     </div>
@@ -884,12 +908,14 @@ function renderContact(contact) {
           ${avatar(contact)}
           <div>
             <div class="item-title">${escapeHtml(`${contact.first_name} ${contact.last_name}`)}</div>
-            <div class="item-sub">${escapeHtml(contact.phone)} ${contact.username ? `@${escapeHtml(contact.username)}` : ""}</div>
+            <div class="item-sub">${escapeHtml(contact.phone)} ${contact.username ? `@${escapeHtml(contact.username)}` : ""} · #${escapeHtml(contact.user_id)}</div>
           </div>
         </div>
         <div class="actions">
           <button class="btn" type="button" data-action="start-chat" data-user-id="${contact.user_id}">Chat</button>
           <button class="btn warning" type="button" data-action="check-presence" data-user-id="${contact.user_id}">Status</button>
+          <button class="btn warning" type="button" data-action="unblock-user" data-user-id="${contact.user_id}">Blokdan chiqarish</button>
+          <button class="btn danger" type="button" data-action="block-user" data-user-id="${contact.user_id}">Bloklash</button>
           <button class="btn danger" type="button" data-action="remove-contact" data-user-id="${contact.user_id}">O'chirish</button>
         </div>
       </div>
@@ -963,13 +989,22 @@ function renderChatListItem(chat) {
 function renderChatWindow() {
   const detail = state.data.chatDetail;
   const messages = [...state.data.messages].sort((a, b) => Number(a.id) - Number(b.id));
+  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(state.data.selectedChatId));
+  const isPrivate = activeChat?.chat_type === "private";
+  const peer = activeChat?.peer || (detail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+  const peerUserId = peer?.id;
+
   return `
     <div class="panel-header">
       <div>
-        <h3>${escapeHtml(chatName(detail || state.data.chats.find((item) => Number(item.id) === Number(state.data.selectedChatId))))}</h3>
+        <h3>${escapeHtml(chatName(activeChat))}</h3>
         <p>${detail?.participants?.map((item) => escapeHtml(fullName(item))).join(", ") || "Ishtirokchilar"}</p>
       </div>
       <div class="actions">
+        ${isPrivate && peerUserId ? `
+          <button class="btn warning" type="button" data-action="unblock-user" data-user-id="${peerUserId}">Blokdan chiqarish</button>
+          <button class="btn danger" type="button" data-action="block-user" data-user-id="${peerUserId}">Bloklash</button>
+        ` : ""}
         <button class="btn warning" type="button" data-action="report-chat">Shikoyat</button>
         <button class="btn danger" type="button" data-action="delete-chat">O'chirish</button>
       </div>
@@ -1687,6 +1722,16 @@ async function handleSubmit(event) {
     return;
   }
 
+  if (action === "manage-block-user") {
+    const userId = Number(values.user_id);
+    if (!userId) {
+      notify("error", "User ID kiriting");
+      return;
+    }
+    await unblockUser(userId);
+    return;
+  }
+
   if (action === "create-private-chat") {
     await withBusy(async () => {
       const user = await api(`/users/search${encodeQuery({ phone: values.phone })}`);
@@ -1995,6 +2040,49 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "unblock-user") {
+    await unblockUser(Number(button.dataset.userId));
+    return;
+  }
+
+  if (action === "block-user") {
+    await blockUser(Number(button.dataset.userId));
+    return;
+  }
+
+  if (action === "unblock-user-form") {
+    const form = button.closest("form");
+    const userId = Number(form?.elements?.user_id?.value?.trim());
+    if (!userId) {
+      notify("error", "User ID kiriting");
+      return;
+    }
+    await unblockUser(userId);
+    return;
+  }
+
+  if (action === "block-user-form") {
+    const form = button.closest("form");
+    const userId = Number(form?.elements?.user_id?.value?.trim());
+    if (!userId) {
+      notify("error", "User ID kiriting");
+      return;
+    }
+    await blockUser(userId);
+    return;
+  }
+
+  if (action === "check-block-form") {
+    const form = button.closest("form");
+    const userId = Number(form?.elements?.user_id?.value?.trim());
+    if (!userId) {
+      notify("error", "User ID kiriting");
+      return;
+    }
+    await checkBlockStatus(userId);
+    return;
+  }
+
   if (action === "start-chat") {
     await withBusy(async () => {
       const chat = await api("/chats", {
@@ -2186,6 +2274,46 @@ async function addContact(userId) {
     });
     await loadContacts();
   }, "Kontakt qo'shildi");
+}
+
+async function unblockUser(userId) {
+  if (!userId) return;
+  await withBusy(async () => {
+    await api(`/users/${userId}/block`, { method: "DELETE" });
+    if (state.data.blockStatus && Number(state.data.blockStatus.user_id) === Number(userId)) {
+      state.data.blockStatus.is_blocked = false;
+    }
+  }, `User #${userId} blokdan chiqarildi`);
+}
+
+async function blockUser(userId) {
+  if (!userId) return;
+  if (!window.confirm(`User #${userId} bloklansinmi?`)) return;
+  await withBusy(async () => {
+    await api(`/users/${userId}/block`, { method: "POST" });
+    if (state.data.blockStatus && Number(state.data.blockStatus.user_id) === Number(userId)) {
+      state.data.blockStatus.is_blocked = true;
+    }
+    if (state.data.selectedChatId) {
+      const activeChat = state.data.chatDetail || state.data.chats.find((c) => Number(c.id) === Number(state.data.selectedChatId));
+      const peer = activeChat?.peer || (state.data.chatDetail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+      if (peer && Number(peer.id) === Number(userId)) {
+        state.data.selectedChatId = null;
+        state.data.chatDetail = null;
+        state.data.messages = [];
+        await loadChats();
+      }
+    }
+  }, `User #${userId} bloklandi`);
+}
+
+async function checkBlockStatus(userId) {
+  if (!userId) return;
+  await withBusy(async () => {
+    const result = await api(`/users/${userId}/block`);
+    state.data.blockStatus = { user_id: userId, is_blocked: Boolean(result?.is_blocked) };
+    notify(result?.is_blocked ? "warning" : "ok", `User #${userId}: ${result?.is_blocked ? "Bloklangan" : "Bloklanmagan"}`);
+  });
 }
 
 function updateCart(action, button) {
