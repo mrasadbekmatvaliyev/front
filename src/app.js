@@ -9,6 +9,7 @@ const STORAGE = {
   view: "voha.view",
   cart: "voha.cart",
   adminKey: "voha.adminKey",
+  reactions: "voha.reactions",
 };
 
 const app = document.getElementById("app");
@@ -50,6 +51,17 @@ const state = {
     pushLogs: null,
     adminKey: localStorage.getItem(STORAGE.adminKey) || "",
     blockStatus: null,
+    chatSearchQuery: "",
+    inChatSearchQuery: "",
+    chatSearchOpen: false,
+    chatPlusMenuOpen: false,
+    activeChatModal: null,
+    chatMoreMenuOpen: false,
+    emojiPickerOpen: false,
+    attachMenuOpen: false,
+    peerPresence: {},
+    reactions: readJson(STORAGE.reactions, {}),
+    playingAudioId: null,
   },
   cart: readJson(STORAGE.cart, { marketId: null, items: {} }),
   wsChat: null,
@@ -417,6 +429,19 @@ async function loadChat(chatId) {
   state.data.messages = messageResponse.messages || [];
   connectChatSocket(chatId);
   await markLatestIncomingRead();
+
+  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(chatId));
+  const peer = activeChat?.peer || (detail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+  if (peer?.id) {
+    try {
+      const pres = await api(`/presence/${peer.id}`);
+      state.data.peerPresence = state.data.peerPresence || {};
+      state.data.peerPresence[peer.id] = pres;
+    } catch {
+      // ignore
+    }
+  }
+  scrollTgMessagesToBottom();
 }
 
 async function markLatestIncomingRead() {
@@ -468,9 +493,11 @@ async function loadForView(view = state.view) {
       await loadContacts();
     }
     if (view === "chats") {
-      await loadChats();
+      await Promise.allSettled([loadChats(), loadContacts()]);
       if (state.data.selectedChatId) {
         await loadChat(state.data.selectedChatId);
+      } else if (state.data.chats.length > 0 && window.innerWidth > 760) {
+        await loadChat(state.data.chats[0].id);
       }
     }
     if (view === "markets") {
@@ -726,7 +753,7 @@ function renderShell() {
             ${avatar(state.user)}
           </div>
         </header>
-        <section class="content">
+        <section class="content ${state.view === "chats" ? "chat-view-content" : ""}">
           ${state.notice ? `<div class="alert ${state.notice.type}">${escapeHtml(state.notice.text)}</div>` : ""}
           ${renderView()}
         </section>
@@ -923,42 +950,302 @@ function renderContact(contact) {
   `;
 }
 
+const TG_ICONS = {
+  back: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`,
+  search: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`,
+  call: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-2.2 2.2a15.053 15.053 0 01-6.59-6.59l2.2-2.21a.96.96 0 00.25-1A11.36 11.36 0 018.57 3.9a1 1 0 00-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.52c0-.55-.45-1-.99-1z"/></svg>`,
+  more: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`,
+  clip: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
+  emoji: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>`,
+  mic: `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`,
+  send: `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`,
+  plus: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+  refresh: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
+  doubleCheck: `<span class="tg-checks read" title="O'qildi"><svg width="16" height="11" viewBox="0 0 16 11" fill="none"><path d="M11.07.72a.85.85 0 0 0-1.2 0L5.34 5.25l-1.2-1.2a.85.85 0 0 0-1.2 1.2l1.8 1.8a.85.85 0 0 0 1.2 0l5.13-5.13a.85.85 0 0 0 0-1.2z" fill="currentColor"/><path d="M14.67.72a.85.85 0 0 0-1.2 0L8.94 5.25 7.74 4.05a.85.85 0 0 0-1.2 1.2l1.8 1.8a.85.85 0 0 0 1.2 0l5.13-5.13a.85.85 0 0 0 0-1.2z" fill="currentColor"/></svg></span>`,
+  singleCheck: `<span class="tg-checks sent" title="Yuborildi"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.87.72a.85.85 0 0 0-1.2 0L4.14 5.25l-1.2-1.2a.85.85 0 0 0-1.2 1.2l1.8 1.8a.85.85 0 0 0 1.2 0l5.13-5.13a.85.85 0 0 0 0-1.2z" fill="currentColor"/></svg></span>`,
+  play: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff"><polygon points="6 4 20 12 6 20 6 4"/></svg>`,
+  pause: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+};
+
+const TG_COLORS = [
+  "#e17076", "#faa774", "#a695e7", "#7bc862",
+  "#6ec9cb", "#65aadd", "#ee7aae", "#e56555",
+];
+
+function getTgColor(id) {
+  const num = Number(id) || (typeof id === "string" ? id.charCodeAt(0) : 0);
+  return TG_COLORS[Math.abs(num) % TG_COLORS.length];
+}
+
+function renderTgAvatar(chatOrUser, isChat = false, className = "tg-avatar") {
+  const avatarImg = assetUrl(chatOrUser?.avatar_url || chatOrUser?.image_url);
+  const name = isChat ? chatName(chatOrUser) : fullName(chatOrUser);
+  const letter = initials(name);
+  const color = getTgColor(chatOrUser?.id || name);
+  return `<div class="${className}" style="background:${color};">${
+    avatarImg ? `<img src="${escapeHtml(avatarImg)}" alt="">` : escapeHtml(letter)
+  }</div>`;
+}
+
+function formatChatTime(value) {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function formatChatDateBadge(value) {
+  if (!value) return "";
+  try {
+    const date = new Date(value);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return "Today";
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (date.toDateString() === y.toDateString()) return "Yesterday";
+    return new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+    }).format(date);
+  } catch {
+    return "";
+  }
+}
+
+function formatLastSeen(presence) {
+  if (!presence) return "last seen 18 minutes ago";
+  if (presence.online) return "online";
+  if (!presence.last_seen) return "last seen 18 minutes ago";
+  try {
+    const then = new Date(presence.last_seen).getTime();
+    const now = Date.now();
+    const diffMin = Math.floor((now - then) / 60000);
+    if (diffMin <= 1) return "last seen just now";
+    if (diffMin < 60) return `last seen ${diffMin} minutes ago`;
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) return `last seen ${diffHour} hours ago`;
+    return `last seen ${formatDate(presence.last_seen)}`;
+  } catch {
+    return "last seen 18 minutes ago";
+  }
+}
+
+const TG_WAVEFORM_BARS = [4, 6, 12, 16, 10, 8, 14, 18, 15, 9, 7, 13, 16, 12, 8, 14, 17, 11, 7, 10, 15, 18, 13, 8, 12, 14, 9, 6, 11, 8, 5, 4];
+
+function renderWaveformBars(isPlaying) {
+  return TG_WAVEFORM_BARS.map((height, idx) => {
+    const isActive = isPlaying && idx < Math.floor(TG_WAVEFORM_BARS.length * 0.6);
+    return `<div class="tg-wave-bar ${isActive ? "active" : ""}" style="height:${height}px;"></div>`;
+  }).join("");
+}
+
+function renderTextWithLinks(text) {
+  if (!text) return "";
+  const escaped = escapeHtml(text);
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  let formatted = escaped.replace(urlRegex, (url) => {
+    return `<a class="tg-link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+  });
+  const mentionRegex = /(@[a-zA-Z0-9_]+)/g;
+  formatted = formatted.replace(mentionRegex, (mention) => {
+    return `<span class="tg-mention">${mention}</span>`;
+  });
+  return formatted;
+}
+
+function playVoiceMock(messageId) {
+  if (state.data.playingAudioId === messageId) {
+    state.data.playingAudioId = null;
+    render();
+    return;
+  }
+  state.data.playingAudioId = messageId;
+  render();
+
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(320, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.5);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 1.1);
+    }
+  } catch {
+    // AudioContext blocked
+  }
+
+  window.setTimeout(() => {
+    if (state.data.playingAudioId === messageId) {
+      state.data.playingAudioId = null;
+      render();
+    }
+  }, 1400);
+}
+
+function scrollTgMessagesToBottom() {
+  window.requestAnimationFrame(() => {
+    const el = document.querySelector(".tg-messages-scroll");
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+}
+
+function toggleMessageReaction(messageId, reaction = "❤️") {
+  const numId = Number(messageId);
+  const current = state.data.reactions[numId] || [];
+  if (current.includes(reaction)) {
+    state.data.reactions[numId] = current.filter((r) => r !== reaction);
+  } else {
+    state.data.reactions[numId] = [...current, reaction];
+  }
+  saveJson(STORAGE.reactions || "voha.reactions", state.data.reactions);
+  render();
+}
+
+async function cancelCall() {
+  state.data.activeChatModal = null;
+  render();
+  if (!state.data.selectedChatId) return;
+  await withBusy(async () => {
+    const payload = {
+      text: "Canceled call",
+      message_type: "call",
+      client_message_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    };
+    const socketReady = state.wsChat?.readyState === WebSocket.OPEN
+      && Number(state.wsChat.chatId) === Number(state.data.selectedChatId);
+    if (socketReady) {
+      state.wsChat.send(JSON.stringify({ type: "send", ...payload }));
+    } else {
+      const message = await api(`/chats/${state.data.selectedChatId}/messages`, {
+        method: "POST",
+        body: payload,
+      });
+      upsertById(state.data.messages, message);
+    }
+    scrollTgMessagesToBottom();
+  });
+}
+
+async function sendVoiceMessageMock() {
+  if (!state.data.selectedChatId) return;
+  await withBusy(async () => {
+    const payload = {
+      text: "[Ovozli xabar]",
+      message_type: "audio",
+      client_message_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    };
+    const socketReady = state.wsChat?.readyState === WebSocket.OPEN
+      && Number(state.wsChat.chatId) === Number(state.data.selectedChatId);
+    if (socketReady) {
+      state.wsChat.send(JSON.stringify({ type: "send", ...payload }));
+    } else {
+      const message = await api(`/chats/${state.data.selectedChatId}/messages`, {
+        method: "POST",
+        body: payload,
+      });
+      upsertById(state.data.messages, message);
+    }
+    scrollTgMessagesToBottom();
+  }, "Ovozli xabar yuborildi");
+}
+
+function loadSampleMessages() {
+  const now = new Date();
+  const sep12 = new Date(now.getFullYear(), 8, 12, 11, 31);
+  const sep13 = new Date(now.getFullYear(), 8, 13, 12, 36);
+
+  state.data.messages = [
+    {
+      id: 101,
+      sender: { id: 999, first_name: "Bobur", last_name: "" },
+      sender_id: 999,
+      text: "M",
+      message_type: "text",
+      is_read: true,
+      created_at: new Date(sep12.getTime()).toISOString(),
+    },
+    {
+      id: 102,
+      sender: state.user,
+      sender_id: state.user?.id,
+      text: "[Ovozli xabar]",
+      message_type: "audio",
+      is_read: true,
+      created_at: new Date(sep12.getTime() + 2.5 * 3600000).toISOString(),
+    },
+    {
+      id: 103,
+      sender: state.user,
+      sender_id: state.user?.id,
+      text: "Canceled call",
+      message_type: "call",
+      is_read: true,
+      created_at: new Date(sep12.getTime() + 7 * 3600000).toISOString(),
+    },
+    {
+      id: 104,
+      sender: state.user,
+      sender_id: state.user?.id,
+      text: "https://t.me/poemzonee",
+      message_type: "text",
+      is_read: true,
+      created_at: new Date(sep12.getTime() + 12 * 3600000).toISOString(),
+    },
+    {
+      id: 105,
+      sender: { id: 999, first_name: "Bobur", last_name: "" },
+      sender_id: 999,
+      text: "@poemzonee",
+      message_type: "text",
+      is_read: true,
+      created_at: new Date(sep13.getTime() - 10 * 3600000).toISOString(),
+    },
+    {
+      id: 106,
+      sender: state.user,
+      sender_id: state.user?.id,
+      text: "2",
+      message_type: "text",
+      is_read: true,
+      created_at: new Date(sep13.getTime()).toISOString(),
+    },
+    {
+      id: 107,
+      sender: state.user,
+      sender_id: state.user?.id,
+      text: "33",
+      message_type: "text",
+      is_read: true,
+      created_at: new Date(sep13.getTime() + 1000).toISOString(),
+    },
+  ];
+  state.data.reactions[102] = ["❤️"];
+  saveJson(STORAGE.reactions || "voha.reactions", state.data.reactions);
+  render();
+  scrollTgMessagesToBottom();
+}
+
 function renderChats() {
   const selected = state.data.selectedChatId;
   return `
-    <div class="chat-layout">
-      <section class="panel chat-list">
-        <div class="panel-header">
-          <div><h3>Chatlar</h3><p>${state.data.chats.length} ta suhbat</p></div>
-          <button class="btn" type="button" data-action="refresh-chats">Yangilash</button>
-        </div>
-        <div class="panel-body stack">
-          <form class="form-grid" data-action="create-private-chat">
-            <div class="field">
-              <label>Telefon</label>
-              <input name="phone" placeholder="+998901234567">
-            </div>
-            <button class="btn primary" type="submit">Private chat</button>
-          </form>
-          <form class="form-grid" data-action="create-group-chat">
-            <div class="field">
-              <label>Guruh nomi</label>
-              <input name="name" maxlength="100">
-            </div>
-            <div class="field">
-              <label>User ID lar</label>
-              <input name="user_ids" placeholder="12, 18, 24">
-            </div>
-            <button class="btn" type="submit">Guruh yaratish</button>
-          </form>
-          <div class="list">
-            ${state.data.chats.map(renderChatListItem).join("") || empty("Chatlar topilmadi")}
-          </div>
-        </div>
-      </section>
-      <section class="panel chat-window">
-        ${selected ? renderChatWindow() : `<div class="panel-body">${empty("Chat tanlang")}</div>`}
-      </section>
+    <div class="chat-layout ${selected ? "has-selected" : ""}">
+      ${renderTgSidebar()}
+      ${renderChatWindow()}
+      ${renderTgModals()}
     </div>
   `;
 }
@@ -986,69 +1273,705 @@ function renderChatListItem(chat) {
   `;
 }
 
+function renderTgSidebar() {
+  return `
+    <aside class="tg-chat-sidebar">
+      <div class="tg-sidebar-header">
+        <div class="tg-sidebar-title-row">
+          <h3 class="tg-sidebar-title">Chatlar</h3>
+          <span class="tg-sidebar-count">${state.data.chats.length}</span>
+        </div>
+        <div class="tg-sidebar-actions">
+          <button class="tg-icon-btn" type="button" data-action="refresh-chats" title="Yangilash">
+            ${TG_ICONS.refresh}
+          </button>
+          <button class="tg-plus-btn" type="button" data-action="toggle-chat-plus" title="Yangi chat / guruh / kontakt (+)">
+            ${TG_ICONS.plus}
+          </button>
+        </div>
+      </div>
+
+      <div class="tg-search-bar">
+        <span class="tg-search-icon">${TG_ICONS.search}</span>
+        <input class="tg-search-input" type="text" placeholder="Qidiruv..." value="${escapeHtml(state.data.chatSearchQuery)}" data-action="chat-search-input">
+      </div>
+
+      ${state.data.chatPlusMenuOpen ? `
+        <div class="tg-plus-menu">
+          <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="new-private-chat">
+            <span class="tg-menu-icon">💬</span>
+            <div>
+              <strong>Yangi shaxsiy chat</strong>
+              <small>Kontakt yoki telefon raqam orqali</small>
+            </div>
+          </button>
+          <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="new-group-chat">
+            <span class="tg-menu-icon">👥</span>
+            <div>
+              <strong>Yangi guruh</strong>
+              <small>Guruh nomi va a'zolar</small>
+            </div>
+          </button>
+          <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="add-contact">
+            <span class="tg-menu-icon">👤</span>
+            <div>
+              <strong>Yangi kontakt qo'shish</strong>
+              <small>Telefon orqali kontakt saqlash</small>
+            </div>
+          </button>
+          <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="search-user">
+            <span class="tg-menu-icon">🔍</span>
+            <div>
+              <strong>Foydalanuvchi qidirish</strong>
+              <small>Telefon raqam bo'yicha global qidiruv</small>
+            </div>
+          </button>
+        </div>
+      ` : ""}
+
+      <div class="tg-chat-list">
+        ${renderTgChatListItems()}
+      </div>
+    </aside>
+  `;
+}
+
+function renderTgChatListItems() {
+  let list = state.data.chats;
+  if (state.data.chatSearchQuery.trim()) {
+    const q = state.data.chatSearchQuery.toLowerCase();
+    list = list.filter((c) => chatName(c).toLowerCase().includes(q) || (c.last_message?.text || "").toLowerCase().includes(q));
+  }
+  if (!list.length) {
+    return `
+      <div class="tg-chat-empty-state">
+        <div class="tg-chat-empty-pill">Chatlar topilmadi</div>
+        <button class="btn primary" type="button" data-action="toggle-chat-plus" style="margin-top:6px;">+ Chat yaratish</button>
+      </div>
+    `;
+  }
+  return list.map(renderTgChatListItem).join("");
+}
+
+function renderTgChatListItem(chat) {
+  const active = Number(chat.id) === Number(state.data.selectedChatId);
+  const peer = chat.peer || (chat.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+  const isOnline = Boolean(peer && state.data.peerPresence[peer.id]?.online);
+
+  let lastText = chat.last_message?.text || "Xabar yo'q";
+  if (chat.last_message?.message_type === "audio") lastText = "🎤 Ovozli xabar";
+  else if (chat.last_message?.message_type === "call" || lastText === "Canceled call") lastText = "📞 Canceled call";
+  else if (chat.last_message?.message_type === "account") lastText = "💳 Hisob tranzaksiyasi";
+  else if (chat.last_message?.market_order) lastText = "🛒 Market buyurtmasi";
+
+  const isMine = Number(chat.last_message?.sender?.id || chat.last_message?.sender_id) === Number(state.user?.id);
+  const timeText = chat.last_message?.created_at ? formatChatTime(chat.last_message.created_at) : "";
+
+  return `
+    <button class="tg-chat-item ${active ? "active" : ""}" type="button" data-action="select-chat" data-chat-id="${chat.id}">
+      <div style="position:relative;">
+        ${renderTgAvatar(chat, true)}
+        ${isOnline ? `<span class="tg-online-badge"></span>` : ""}
+      </div>
+      <div class="tg-chat-info">
+        <div class="tg-chat-title">${escapeHtml(chatName(chat))}</div>
+        <div class="tg-chat-preview">${isMine ? "<span style='color:#64b5f6;'>Siz: </span>" : ""}${escapeHtml(lastText)}</div>
+      </div>
+      <div class="tg-chat-meta">
+        <span class="tg-chat-time">${escapeHtml(timeText)}</span>
+        ${chat.unread_count ? `<span class="tg-unread-badge">${chat.unread_count}</span>` : ""}
+      </div>
+    </button>
+  `;
+}
+
 function renderChatWindow() {
+  const selected = state.data.selectedChatId;
+  if (!selected) {
+    return `
+      <section class="tg-chat-window">
+        <div class="tg-chat-empty-state">
+          <div style="font-size:48px;">💬</div>
+          <div class="tg-chat-empty-pill">Suhbatni tanlang yoki yangi chat oching</div>
+          <button class="btn primary" type="button" data-action="toggle-chat-plus" style="margin-top:8px;">+ Yangi chat yaratish</button>
+        </div>
+      </section>
+    `;
+  }
+
   const detail = state.data.chatDetail;
-  const messages = [...state.data.messages].sort((a, b) => Number(a.id) - Number(b.id));
-  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(state.data.selectedChatId));
+  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(selected));
   const isPrivate = activeChat?.chat_type === "private";
   const peer = activeChat?.peer || (detail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
   const peerUserId = peer?.id;
+  const presence = peerUserId ? state.data.peerPresence[peerUserId] : null;
+  const isOnline = Boolean(presence?.online);
+  const statusText = isPrivate ? formatLastSeen(presence) : `${detail?.participants?.length || 2} ta a'zo`;
 
   return `
-    <div class="panel-header">
-      <div>
-        <h3>${escapeHtml(chatName(activeChat))}</h3>
-        <p>${detail?.participants?.map((item) => escapeHtml(fullName(item))).join(", ") || "Ishtirokchilar"}</p>
+    <section class="tg-chat-window">
+      <header class="tg-chat-header">
+        <div class="tg-header-left">
+          <button class="tg-back-btn" type="button" data-action="back-to-chat-list" title="Orqaga">
+            ${TG_ICONS.back}
+          </button>
+          <div class="tg-header-user" data-action="open-chat-modal" data-modal="user-info">
+            <div style="position:relative;">
+              ${renderTgAvatar(activeChat, true)}
+              ${isOnline ? `<span class="tg-online-badge"></span>` : ""}
+            </div>
+            <div class="tg-header-info">
+              <div class="tg-header-name">${escapeHtml(chatName(activeChat))}</div>
+              <div class="tg-header-status ${isOnline ? "online" : ""}">${escapeHtml(statusText)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tg-header-right">
+          <button class="tg-icon-btn ${state.data.chatSearchOpen ? "active" : ""}" type="button" data-action="toggle-chat-search" title="Qidirish">
+            ${TG_ICONS.search}
+          </button>
+          <button class="tg-icon-btn" type="button" data-action="start-call" title="Qo'ng'iroq">
+            ${TG_ICONS.call}
+          </button>
+          <button class="tg-icon-btn" type="button" data-action="toggle-chat-more" title="Batafsil">
+            ${TG_ICONS.more}
+          </button>
+          <div class="tg-window-controls">
+            <span>_</span>
+            <span>□</span>
+            <span>✕</span>
+          </div>
+        </div>
+
+        ${state.data.chatMoreMenuOpen ? renderChatMoreDropdown(activeChat, peer) : ""}
+      </header>
+
+      ${state.data.chatSearchOpen ? `
+        <div class="tg-inchat-search-bar">
+          <span style="color:#708499;display:grid;place-items:center;">${TG_ICONS.search}</span>
+          <input type="text" placeholder="Xabarlar orasidan qidirish..." value="${escapeHtml(state.data.inChatSearchQuery)}" data-action="inchat-search-input">
+          <button class="tg-icon-btn" type="button" data-action="clear-inchat-search" style="width:28px;height:28px;">✕</button>
+        </div>
+      ` : ""}
+
+      <div class="tg-messages-scroll">
+        ${renderTgMessagesInner()}
       </div>
-      <div class="actions">
-        ${isPrivate && peerUserId ? `
-          <button class="btn warning" type="button" data-action="unblock-user" data-user-id="${peerUserId}">Blokdan chiqarish</button>
-          <button class="btn danger" type="button" data-action="block-user" data-user-id="${peerUserId}">Bloklash</button>
+
+      <form class="tg-composer" data-action="send-tg-message">
+        <button class="tg-icon-btn" type="button" data-action="toggle-attach-menu" title="Biriktirish">
+          ${TG_ICONS.clip}
+        </button>
+
+        ${state.data.attachMenuOpen ? renderAttachDropdown() : ""}
+
+        <div class="tg-composer-input-wrap">
+          <textarea
+            id="tg-message-input"
+            name="text"
+            rows="1"
+            placeholder="Write a message..."
+            autocomplete="off"
+          ></textarea>
+        </div>
+
+        <button class="tg-icon-btn" type="button" data-action="toggle-emoji-picker" title="Emoji">
+          ${TG_ICONS.emoji}
+        </button>
+
+        ${state.data.emojiPickerOpen ? renderEmojiPicker() : ""}
+
+        <button class="tg-icon-btn" type="submit" id="tg-send-btn" title="Ovozli xabar">
+          ${TG_ICONS.mic}
+        </button>
+      </form>
+    </section>
+  `;
+}
+
+function renderChatMoreDropdown(activeChat, peer) {
+  const peerId = peer?.id;
+  return `
+    <div class="tg-header-dropdown">
+      <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="user-info">
+        <span class="tg-menu-icon">👤</span>
+        <div><strong>Ma'lumotlar</strong><small>Foydalanuvchi profili</small></div>
+      </button>
+      ${peerId ? `
+        <button class="tg-menu-item" type="button" data-action="unblock-user" data-user-id="${peerId}">
+          <span class="tg-menu-icon">🔓</span>
+          <div><strong>Blokdan chiqarish</strong></div>
+        </button>
+        <button class="tg-menu-item" type="button" data-action="block-user" data-user-id="${peerId}">
+          <span class="tg-menu-icon">🚫</span>
+          <div><strong>Bloklash</strong></div>
+        </button>
+      ` : ""}
+      <button class="tg-menu-item" type="button" data-action="report-chat">
+        <span class="tg-menu-icon">⚠️</span>
+        <div><strong>Shikoyat qilish</strong></div>
+      </button>
+      <button class="tg-menu-item" type="button" data-action="delete-chat" style="color:#ff595a;">
+        <span class="tg-menu-icon" style="color:#ff595a;">🗑</span>
+        <div><strong style="color:#ff595a;">Chatni o'chirish</strong></div>
+      </button>
+    </div>
+  `;
+}
+
+function renderTgMessagesInner() {
+  let messages = [...state.data.messages].sort((a, b) => Number(a.id) - Number(b.id));
+
+  if (state.data.inChatSearchQuery.trim()) {
+    const q = state.data.inChatSearchQuery.toLowerCase();
+    messages = messages.filter((m) => (m.text || "").toLowerCase().includes(q));
+  }
+
+  if (messages.length === 0) {
+    return `
+      <div class="tg-chat-empty-state">
+        <div class="tg-chat-empty-pill">Bu chatda hozircha xabarlar yo'q</div>
+        <button class="btn" type="button" data-action="load-sample-messages" style="margin-top:6px;">📸 Namuna xabarlarni ko'rish</button>
+      </div>
+    `;
+  }
+
+  let lastDateBadge = "";
+  const htmlParts = [];
+
+  for (const message of messages) {
+    const badge = formatChatDateBadge(message.created_at);
+    if (badge && badge !== lastDateBadge) {
+      lastDateBadge = badge;
+      htmlParts.push(`<div class="tg-date-badge"><span>${escapeHtml(badge)}</span></div>`);
+    }
+    htmlParts.push(renderTgMessageItem(message));
+  }
+
+  return htmlParts.join("");
+}
+
+function renderTgMessageItem(message) {
+  const senderId = message.sender?.id || message.sender_id;
+  const mine = Number(senderId) === Number(state.user?.id);
+  const deleted = message.is_deleted;
+  const isCall = message.message_type === "call" || message.text === "Canceled call" || (message.text && message.text.toLowerCase().includes("canceled call"));
+  const isAudio = message.message_type === "audio" || message.message_type === "voice" || (message.text && message.text.startsWith("[Ovozli"));
+  const isPlaying = state.data.playingAudioId === message.id;
+  const numId = Number(message.id);
+  const reactions = state.data.reactions[numId] || (isAudio ? ["❤️"] : []);
+  const showHeartBadge = reactions.includes("❤️") || isAudio;
+
+  return `
+    <div class="tg-msg-row ${mine ? "outgoing" : "incoming"} ${deleted ? "deleted" : ""}" id="msg-${message.id}">
+      <div class="tg-quick-actions">
+        <button class="tg-quick-btn" type="button" data-action="quick-react" data-message-id="${message.id}" data-reaction="❤️" title="Yurakcha">❤️</button>
+        <button class="tg-quick-btn" type="button" data-action="quick-react" data-message-id="${message.id}" data-reaction="👍" title="Layk">👍</button>
+        <button class="tg-quick-btn" type="button" data-action="quick-react" data-message-id="${message.id}" data-reaction="🔥" title="Olov">🔥</button>
+        ${mine && !deleted ? `<button class="tg-quick-btn" type="button" data-action="edit-message" data-message-id="${message.id}" data-text="${escapeHtml(message.text)}" title="Tahrirlash">✏️</button>` : ""}
+        ${mine && !deleted ? `<button class="tg-quick-btn" type="button" data-action="delete-message" data-message-id="${message.id}" title="O'chirish">🗑</button>` : ""}
+      </div>
+      <div class="tg-bubble">
+        ${!mine && message.sender && state.data.chatDetail?.chat_type === "group" ? `<div class="tg-msg-sender">${escapeHtml(fullName(message.sender))}</div>` : ""}
+
+        ${isAudio ? renderTgAudioContent(message, mine, isPlaying) : ""}
+        ${isCall ? renderTgCallContent(message, mine) : ""}
+        ${!isAudio && !isCall && message.message_type === "account" ? renderTgAccountContent(message) : ""}
+        ${!isAudio && !isCall && message.market_order ? renderOrderMessage(message.market_order) : ""}
+        ${!isAudio && !isCall && message.message_type !== "account" && !message.market_order ? `
+          <div class="tg-msg-text">${renderTextWithLinks(message.text)}</div>
+          <span class="tg-bubble-meta">
+            ${message.is_edited ? "<span style='font-size:10px;opacity:0.8;'>tahrirlangan</span> " : ""}
+            <span>${formatChatTime(message.created_at)}</span>
+            ${mine ? (message.is_read ? TG_ICONS.doubleCheck : TG_ICONS.singleCheck) : ""}
+          </span>
         ` : ""}
-        <button class="btn warning" type="button" data-action="report-chat">Shikoyat</button>
-        <button class="btn danger" type="button" data-action="delete-chat">O'chirish</button>
+
+        ${showHeartBadge ? `
+          <div class="tg-reaction-badge" data-action="toggle-reaction" data-message-id="${message.id}" data-reaction="❤️" title="Reaksiya: ❤️">
+            ❤️
+          </div>
+        ` : ""}
       </div>
     </div>
-    <div class="messages">
-      ${messages.map(renderMessage).join("") || empty("Xabarlar yo'q")}
-    </div>
-    <form class="composer" data-action="send-message">
-      <div class="form-grid">
-        <div class="field">
-          <label>Xabar</label>
-          <textarea name="text" maxlength="4096" required></textarea>
+  `;
+}
+
+function renderTgAudioContent(message, mine, isPlaying) {
+  return `
+    <div class="tg-audio-bubble">
+      <button class="tg-play-btn" type="button" data-action="play-voice" data-message-id="${message.id}" title="${isPlaying ? "To'xtatish" : "Eshitish"}">
+        ${isPlaying ? TG_ICONS.pause : TG_ICONS.play}
+      </button>
+      <div class="tg-audio-content">
+        <div class="tg-waveform" data-action="play-voice" data-message-id="${message.id}">
+          ${renderWaveformBars(isPlaying)}
         </div>
-        <div class="form-grid two">
-          <div class="field">
-            <label>Turi</label>
-            <select name="message_type">
-              <option value="text">Text</option>
-              <option value="account">Hisob</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Yo'nalish</label>
-            <select name="account_direction">
-              <option value="">Tanlanmagan</option>
-              <option value="income">Kirim</option>
-              <option value="expense">Chiqim</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Summa</label>
-            <input name="account_amount" type="number" min="0" step="0.01">
-          </div>
-          <div class="field">
-            <label>Valyuta</label>
-            <select name="account_currency">
-              <option value="UZS">UZS</option>
-              <option value="USD">USD</option>
-            </select>
+        <div class="tg-audio-sub">
+          <span>00:01, 4.6 KB</span>
+          <span class="tg-bubble-meta">
+            <span>${formatChatTime(message.created_at)}</span>
+            ${mine ? (message.is_read ? TG_ICONS.doubleCheck : TG_ICONS.singleCheck) : ""}
+          </span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTgCallContent(message, mine) {
+  return `
+    <div class="tg-call-bubble">
+      <div>
+        <div class="tg-call-title">Canceled call</div>
+        <div class="tg-call-sub">
+          <span class="tg-call-arrow">↙</span>
+          <span>${formatChatTime(message.created_at)}</span>
+        </div>
+      </div>
+      <div class="tg-call-icon">
+        ${TG_ICONS.call}
+      </div>
+    </div>
+  `;
+}
+
+function renderTgAccountContent(message) {
+  const isIncome = message.account_direction === "income";
+  return `
+    <div class="tg-account-card">
+      <div class="tg-account-head">${isIncome ? "⬇ Kirim" : "⬆ Chiqim"}</div>
+      <div class="tg-account-amount">${formatMoney(message.account_amount)} ${escapeHtml(message.account_currency || "UZS")}</div>
+      ${message.account_reason ? `<div class="tg-account-reason">${escapeHtml(message.account_reason)}</div>` : ""}
+      <div style="text-align:right;">
+        <span class="tg-bubble-meta">
+          <span>${formatChatTime(message.created_at)}</span>
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+const TG_EMOJIS = [
+  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
+  "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😋", "😛", "😜",
+  "🤪", "🤨", "🧐", "🤓", "😎", "🤩", "🥳", "😏", "😒", "😞",
+  "😔", "😟", "😕", "🙁", "😣", "😖", "😫", "😩", "🥺", "😢",
+  "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱",
+  "👍", "👎", "👏", "🙌", "🤝", "👊", "✊", "✌️", "🤞", "🤟",
+  "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "🔥",
+  "🎉", "✨", "⚡", "💥", "💯", "🚀", "⭐", "🌟", "🙏", "💪"
+];
+
+function renderEmojiPicker() {
+  return `
+    <div class="tg-emoji-picker">
+      ${TG_EMOJIS.map((emoji) => `
+        <button class="tg-emoji-btn" type="button" data-action="insert-emoji" data-emoji="${emoji}">${emoji}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderAttachDropdown() {
+  return `
+    <div class="tg-attach-menu">
+      <button class="tg-menu-item" type="button" data-action="send-voice-message">
+        <span class="tg-menu-icon">🎤</span>
+        <div>
+          <strong>Ovozli xabar</strong>
+          <small>To'lqinli audio yuborish</small>
+        </div>
+      </button>
+      <button class="tg-menu-item" type="button" data-action="open-chat-modal" data-modal="attach-account">
+        <span class="tg-menu-icon">💳</span>
+        <div>
+          <strong>Hisob / Tranzaksiya</strong>
+          <small>Kirim yoki Chiqim</small>
+        </div>
+      </button>
+      <button class="tg-menu-item" type="button" data-action="start-call">
+        <span class="tg-menu-icon">📞</span>
+        <div>
+          <strong>Ovozli qo'ng'iroq</strong>
+          <small>Qo'ng'iroq qilish</small>
+        </div>
+      </button>
+    </div>
+  `;
+}
+
+function renderTgModals() {
+  const modal = state.data.activeChatModal;
+  if (!modal) return "";
+
+  if (modal === "new-private-chat") return renderNewPrivateChatModal();
+  if (modal === "new-group-chat") return renderNewGroupChatModal();
+  if (modal === "add-contact") return renderAddContactModal();
+  if (modal === "search-user") return renderSearchUserModal();
+  if (modal === "call") return renderCallModal();
+  if (modal === "user-info") return renderUserInfoModal();
+  if (modal === "attach-account") return renderAttachAccountModal();
+  return "";
+}
+
+function renderNewPrivateChatModal() {
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>💬 Yangi shaxsiy chat</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body">
+          <form class="tg-input-field" data-action="create-private-chat">
+            <label>Telefon raqam orqali boshlash</label>
+            <div style="display:flex;gap:8px;">
+              <input name="phone" placeholder="+998901234567" autocomplete="tel" required style="flex:1;">
+              <button class="btn primary" type="submit">Boshlash</button>
+            </div>
+          </form>
+
+          <div>
+            <label style="font-size:13px;color:#708499;font-weight:600;display:block;margin-bottom:8px;">Kontaktlarimdan tanlash (${state.data.contacts.length})</label>
+            <div style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+              ${state.data.contacts.map((c) => `
+                <div class="tg-menu-item" style="justify-content:space-between;border:1px solid #242f3d;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    ${renderTgAvatar(c)}
+                    <div>
+                      <strong>${escapeHtml(`${c.first_name} ${c.last_name}`)}</strong>
+                      <small>${escapeHtml(c.phone)}</small>
+                    </div>
+                  </div>
+                  <button class="btn primary" type="button" data-action="start-chat-with-contact" data-user-id="${c.user_id}">Chat</button>
+                </div>
+              `).join("") || empty("Kontaktlar mavjud emas")}
+            </div>
           </div>
         </div>
       </div>
-      <button class="btn primary" type="submit">Yuborish</button>
-    </form>
+    </div>
+  `;
+}
+
+function renderNewGroupChatModal() {
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>👥 Yangi guruh yaratish</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body">
+          <form class="stack" data-action="create-group-chat">
+            <div class="tg-input-field">
+              <label>Guruh nomi</label>
+              <input name="name" maxlength="100" placeholder="Masalan: Jamoa / Do'stlar" required>
+            </div>
+
+            <div>
+              <label style="font-size:13px;color:#708499;font-weight:600;display:block;margin-bottom:8px;">A'zolarni tanlang (${state.data.contacts.length} ta kontakt)</label>
+              <div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+                ${state.data.contacts.map((c) => `
+                  <label class="tg-menu-item" style="cursor:pointer;border:1px solid #242f3d;">
+                    <input type="checkbox" name="group_contact_id" value="${c.user_id}" style="width:18px;height:18px;accent-color:#5288c1;margin-right:6px;">
+                    ${renderTgAvatar(c)}
+                    <div>
+                      <strong>${escapeHtml(`${c.first_name} ${c.last_name}`)}</strong>
+                      <small>${escapeHtml(c.phone)} · #${c.user_id}</small>
+                    </div>
+                  </label>
+                `).join("") || empty("Kontaktlar mavjud emas")}
+              </div>
+            </div>
+
+            <div class="tg-input-field">
+              <label>Qo'shimcha User ID lar (vergul bilan)</label>
+              <input name="user_ids" placeholder="12, 18, 24">
+            </div>
+
+            <button class="btn primary" type="submit" style="width:100%;margin-top:8px;">Guruh yaratish</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAddContactModal() {
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>👤 Yangi kontakt qo'shish</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body">
+          <form class="tg-input-field" data-action="search-contact-to-add">
+            <label>Telefon raqam bo'yicha topish</label>
+            <div style="display:flex;gap:8px;">
+              <input name="phone" placeholder="+998901234567" required style="flex:1;">
+              <button class="btn primary" type="submit">Qidirish</button>
+            </div>
+          </form>
+
+          ${state.data.searchUser ? `
+            <div class="tg-menu-item" style="justify-content:space-between;border:1px solid #5288c1;padding:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                ${renderTgAvatar(state.data.searchUser)}
+                <div>
+                  <strong>${escapeHtml(fullName(state.data.searchUser))}</strong>
+                  <small>@${escapeHtml(state.data.searchUser.username || "username yo'q")} · #${state.data.searchUser.id}</small>
+                </div>
+              </div>
+              <button class="btn primary" type="button" data-action="confirm-add-contact" data-user-id="${state.data.searchUser.id}">Qo'shish</button>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSearchUserModal() {
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>🔍 Foydalanuvchini qidirish</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body">
+          <form class="tg-input-field" data-action="search-user-modal-form">
+            <label>Telefon raqami</label>
+            <div style="display:flex;gap:8px;">
+              <input name="phone" placeholder="+998901234567" required style="flex:1;">
+              <button class="btn primary" type="submit">Qidirish</button>
+            </div>
+          </form>
+
+          ${state.data.searchUser ? `
+            <div class="tg-menu-item" style="flex-direction:column;align-items:stretch;border:1px solid #242f3d;padding:14px;gap:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                ${renderTgAvatar(state.data.searchUser)}
+                <div>
+                  <strong style="font-size:16px;">${escapeHtml(fullName(state.data.searchUser))}</strong>
+                  <small>@${escapeHtml(state.data.searchUser.username || "username yo'q")} · #${state.data.searchUser.id}</small>
+                </div>
+              </div>
+              <div class="actions" style="display:flex;gap:8px;">
+                <button class="btn primary" type="button" data-action="start-chat" data-user-id="${state.data.searchUser.id}">Chat</button>
+                <button class="btn" type="button" data-action="add-contact-result" data-user-id="${state.data.searchUser.id}">Kontaktlarga qo'shish</button>
+              </div>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCallModal() {
+  const detail = state.data.chatDetail;
+  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(state.data.selectedChatId));
+  const peer = activeChat?.peer || (detail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+  const name = activeChat ? chatName(activeChat) : "Bobur";
+  const avatarLetter = initials(name);
+
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-call-modal">
+          <div class="tg-call-avatar-pulse">
+            ${avatarLetter}
+          </div>
+          <h3 style="margin:8px 0 0;font-size:22px;color:#fff;">${escapeHtml(name)}</h3>
+          <p style="margin:0;color:#708499;font-size:14px;">Chaqirilmoqda...</p>
+          <button class="tg-call-cancel-btn" type="button" data-action="cancel-call" title="Bekor qilish">
+            ${TG_ICONS.call}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderUserInfoModal() {
+  const detail = state.data.chatDetail;
+  const activeChat = detail || state.data.chats.find((item) => Number(item.id) === Number(state.data.selectedChatId));
+  const peer = activeChat?.peer || (detail?.participants || []).find((p) => Number(p.id) !== Number(state.user?.id));
+  const name = activeChat ? chatName(activeChat) : "Foydalanuvchi";
+  const presence = peer ? state.data.peerPresence[peer.id] : null;
+
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>Foydalanuvchi ma'lumotlari</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body" style="align-items:center;text-align:center;">
+          ${renderTgAvatar(peer || activeChat, false, "tg-call-avatar-pulse")}
+          <h3 style="margin:8px 0 0;font-size:20px;color:#fff;">${escapeHtml(name)}</h3>
+          <p style="margin:0;color:#708499;font-size:13.5px;">${escapeHtml(formatLastSeen(presence))}</p>
+
+          <div style="width:100%;margin-top:14px;background:#242f3d;border-radius:12px;padding:12px;text-align:left;display:flex;flex-direction:column;gap:8px;">
+            ${peer?.phone ? `<div><small style="color:#708499;">Telefon</small><div style="font-weight:600;">${escapeHtml(peer.phone)}</div></div>` : ""}
+            ${peer?.username ? `<div><small style="color:#708499;">Username</small><div style="font-weight:600;">@${escapeHtml(peer.username)}</div></div>` : ""}
+            ${peer?.id ? `<div><small style="color:#708499;">User ID</small><div style="font-weight:600;">#${peer.id}</div></div>` : ""}
+          </div>
+
+          <div style="display:flex;gap:8px;width:100%;margin-top:12px;">
+            ${peer?.id ? `
+              <button class="btn warning" type="button" data-action="unblock-user" data-user-id="${peer.id}" style="flex:1;">Blokdan chiqarish</button>
+              <button class="btn danger" type="button" data-action="block-user" data-user-id="${peer.id}" style="flex:1;">Bloklash</button>
+            ` : ""}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAttachAccountModal() {
+  return `
+    <div class="tg-modal-backdrop" data-action="close-chat-modal">
+      <div class="tg-modal" onclick="event.stopPropagation()">
+        <div class="tg-modal-header">
+          <h3>💳 Hisob / Tranzaksiya yuborish</h3>
+          <button class="tg-icon-btn" type="button" data-action="close-chat-modal">✕</button>
+        </div>
+        <div class="tg-modal-body">
+          <form class="stack" data-action="send-account-message-form">
+            <div class="tg-input-field">
+              <label>Yo'nalish</label>
+              <select name="account_direction">
+                <option value="expense">Chiqim</option>
+                <option value="income">Kirim</option>
+              </select>
+            </div>
+            <div class="tg-input-field">
+              <label>Summa</label>
+              <input name="account_amount" type="number" min="0" step="0.01" placeholder="Masalan: 50000" required>
+            </div>
+            <div class="tg-input-field">
+              <label>Valyuta</label>
+              <select name="account_currency">
+                <option value="UZS">UZS</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div class="tg-input-field">
+              <label>Izoh</label>
+              <input name="text" placeholder="Masalan: Tushlik to'lovi" required>
+            </div>
+            <button class="btn primary" type="submit" style="width:100%;margin-top:8px;">Yuborish</button>
+          </form>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -1734,7 +2657,9 @@ async function handleSubmit(event) {
 
   if (action === "create-private-chat") {
     await withBusy(async () => {
-      const user = await api(`/users/search${encodeQuery({ phone: values.phone })}`);
+      state.data.activeChatModal = null;
+      state.data.chatPlusMenuOpen = false;
+      const user = await api(`/users/search${encodeQuery({ phone: values.phone.trim() })}`);
       const chat = await api("/chats", {
         method: "POST",
         body: { user_ids: [user.id], chat_type: "private", name: null },
@@ -1747,10 +2672,18 @@ async function handleSubmit(event) {
 
   if (action === "create-group-chat") {
     await withBusy(async () => {
-      const ids = parseIdList(values.user_ids);
+      state.data.activeChatModal = null;
+      state.data.chatPlusMenuOpen = false;
+      const checkedInputs = Array.from(form.querySelectorAll('input[name="group_contact_id"]:checked'));
+      const checkedIds = checkedInputs.map((input) => Number(input.value)).filter((id) => Number.isInteger(id) && id > 0);
+      const typedIds = parseIdList(values.user_ids);
+      const allIds = Array.from(new Set([...checkedIds, ...typedIds]));
+      if (!allIds.length) {
+        throw new Error("Kamida bitta ishtirokchi tanlang");
+      }
       const chat = await api("/chats", {
         method: "POST",
-        body: { user_ids: ids, chat_type: "group", name: values.name.trim() },
+        body: { user_ids: allIds, chat_type: "group", name: values.name.trim() },
       });
       state.data.selectedChatId = chat.id;
       await loadForView("chats");
@@ -1758,10 +2691,60 @@ async function handleSubmit(event) {
     return;
   }
 
-  if (action === "send-message") {
+  if (action === "search-contact-to-add") {
     await withBusy(async () => {
+      state.data.searchUser = await api(`/users/search${encodeQuery({ phone: values.phone.trim() })}`);
+      render();
+    });
+    return;
+  }
+
+  if (action === "search-user-modal-form") {
+    await withBusy(async () => {
+      state.data.searchUser = await api(`/users/search${encodeQuery({ phone: values.phone.trim() })}`);
+      render();
+    });
+    return;
+  }
+
+  if (action === "send-account-message-form") {
+    await withBusy(async () => {
+      state.data.activeChatModal = null;
       const payload = {
         text: values.text.trim(),
+        message_type: "account",
+        account_direction: values.account_direction || "expense",
+        account_amount: values.account_amount,
+        account_currency: values.account_currency || "UZS",
+        account_reason: values.text.trim(),
+        client_message_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      };
+      const socketReady = state.wsChat?.readyState === WebSocket.OPEN
+        && Number(state.wsChat.chatId) === Number(state.data.selectedChatId);
+      if (socketReady) {
+        state.wsChat.send(JSON.stringify({ type: "send", ...payload }));
+      } else {
+        const message = await api(`/chats/${state.data.selectedChatId}/messages`, {
+          method: "POST",
+          body: payload,
+        });
+        upsertById(state.data.messages, message);
+      }
+      form.reset();
+      scrollTgMessagesToBottom();
+    });
+    return;
+  }
+
+  if (action === "send-message" || action === "send-tg-message") {
+    const textVal = values.text?.trim() || "";
+    if (!textVal && !values.message_type) {
+      await sendVoiceMessageMock();
+      return;
+    }
+    await withBusy(async () => {
+      const payload = {
+        text: textVal,
         message_type: values.message_type || "text",
         client_message_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       };
@@ -1783,6 +2766,12 @@ async function handleSubmit(event) {
         upsertById(state.data.messages, message);
       }
       form.reset();
+      const sendBtn = document.getElementById("tg-send-btn");
+      if (sendBtn) {
+        sendBtn.innerHTML = TG_ICONS.mic;
+        sendBtn.setAttribute("title", "Ovozli xabar");
+      }
+      scrollTgMessagesToBottom();
     });
     return;
   }
@@ -2015,6 +3004,139 @@ async function handleClick(event) {
 
   if (action === "refresh-chats") {
     await loadForView("chats");
+    return;
+  }
+
+  if (action === "toggle-chat-plus") {
+    state.data.chatPlusMenuOpen = !state.data.chatPlusMenuOpen;
+    render();
+    return;
+  }
+
+  if (action === "open-chat-modal") {
+    state.data.activeChatModal = button.dataset.modal;
+    state.data.chatPlusMenuOpen = false;
+    state.data.chatMoreMenuOpen = false;
+    state.data.attachMenuOpen = false;
+    state.data.emojiPickerOpen = false;
+    render();
+    return;
+  }
+
+  if (action === "close-chat-modal") {
+    state.data.activeChatModal = null;
+    render();
+    return;
+  }
+
+  if (action === "toggle-chat-more") {
+    state.data.chatMoreMenuOpen = !state.data.chatMoreMenuOpen;
+    render();
+    return;
+  }
+
+  if (action === "toggle-chat-search") {
+    state.data.chatSearchOpen = !state.data.chatSearchOpen;
+    if (!state.data.chatSearchOpen) {
+      state.data.inChatSearchQuery = "";
+    }
+    render();
+    return;
+  }
+
+  if (action === "clear-inchat-search") {
+    state.data.inChatSearchQuery = "";
+    const scroll = document.querySelector(".tg-messages-scroll");
+    if (scroll) scroll.innerHTML = renderTgMessagesInner();
+    return;
+  }
+
+  if (action === "toggle-emoji-picker") {
+    state.data.emojiPickerOpen = !state.data.emojiPickerOpen;
+    render();
+    return;
+  }
+
+  if (action === "insert-emoji") {
+    const input = document.getElementById("tg-message-input");
+    if (input) {
+      input.value += button.dataset.emoji;
+      input.focus();
+      const sendBtn = document.getElementById("tg-send-btn");
+      if (sendBtn) {
+        sendBtn.innerHTML = TG_ICONS.send;
+        sendBtn.setAttribute("title", "Yuborish");
+      }
+    }
+    return;
+  }
+
+  if (action === "toggle-attach-menu") {
+    state.data.attachMenuOpen = !state.data.attachMenuOpen;
+    render();
+    return;
+  }
+
+  if (action === "play-voice") {
+    playVoiceMock(Number(button.dataset.messageId));
+    return;
+  }
+
+  if (action === "toggle-reaction" || action === "quick-react") {
+    toggleMessageReaction(button.dataset.messageId, button.dataset.reaction || "❤️");
+    return;
+  }
+
+  if (action === "start-call") {
+    state.data.activeChatModal = "call";
+    state.data.attachMenuOpen = false;
+    render();
+    return;
+  }
+
+  if (action === "cancel-call") {
+    await cancelCall();
+    return;
+  }
+
+  if (action === "send-voice-message") {
+    state.data.attachMenuOpen = false;
+    await sendVoiceMessageMock();
+    return;
+  }
+
+  if (action === "back-to-chat-list") {
+    state.data.selectedChatId = null;
+    render();
+    return;
+  }
+
+  if (action === "start-chat-with-contact") {
+    state.data.activeChatModal = null;
+    await withBusy(async () => {
+      const chat = await api("/chats", {
+        method: "POST",
+        body: {
+          user_ids: [Number(button.dataset.userId)],
+          chat_type: "private",
+          name: null,
+        },
+      });
+      state.data.selectedChatId = chat.id;
+      await loadForView("chats");
+    }, "Chat tayyor");
+    return;
+  }
+
+  if (action === "load-sample-messages") {
+    loadSampleMessages();
+    return;
+  }
+
+  if (action === "confirm-add-contact") {
+    await addContact(Number(button.dataset.userId));
+    state.data.activeChatModal = null;
+    render();
     return;
   }
 
@@ -2360,6 +3482,70 @@ async function boot() {
 
 document.addEventListener("submit", handleSubmit);
 document.addEventListener("click", handleClick);
+
+document.addEventListener("click", (e) => {
+  if (state.data.chatPlusMenuOpen && !e.target.closest(".tg-plus-menu") && !e.target.closest("[data-action='toggle-chat-plus']")) {
+    state.data.chatPlusMenuOpen = false;
+    render();
+  }
+  if (state.data.chatMoreMenuOpen && !e.target.closest(".tg-header-dropdown") && !e.target.closest("[data-action='toggle-chat-more']")) {
+    state.data.chatMoreMenuOpen = false;
+    render();
+  }
+  if (state.data.emojiPickerOpen && !e.target.closest(".tg-emoji-picker") && !e.target.closest("[data-action='toggle-emoji-picker']")) {
+    state.data.emojiPickerOpen = false;
+    render();
+  }
+  if (state.data.attachMenuOpen && !e.target.closest(".tg-attach-menu") && !e.target.closest("[data-action='toggle-attach-menu']")) {
+    state.data.attachMenuOpen = false;
+    render();
+  }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "tg-message-input") {
+    const val = e.target.value.trim();
+    const sendBtn = document.getElementById("tg-send-btn");
+    if (sendBtn) {
+      if (val.length > 0) {
+        sendBtn.innerHTML = TG_ICONS.send;
+        sendBtn.setAttribute("title", "Yuborish");
+      } else {
+        sendBtn.innerHTML = TG_ICONS.mic;
+        sendBtn.setAttribute("title", "Ovozli xabar");
+      }
+    }
+  }
+  if (e.target.dataset.action === "chat-search-input") {
+    state.data.chatSearchQuery = e.target.value.toLowerCase();
+    const chatList = document.querySelector(".tg-chat-list");
+    if (chatList) {
+      chatList.innerHTML = renderTgChatListItems();
+    }
+  }
+  if (e.target.dataset.action === "inchat-search-input") {
+    state.data.inChatSearchQuery = e.target.value;
+    const scrollArea = document.querySelector(".tg-messages-scroll");
+    if (scrollArea) {
+      scrollArea.innerHTML = renderTgMessagesInner();
+    }
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.id === "tg-message-input" && e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const form = e.target.closest("form");
+    if (form) {
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event("submit", { cancelable: true }));
+      }
+    }
+  }
+});
+
 window.addEventListener("beforeunload", closeSockets);
 
 boot();
