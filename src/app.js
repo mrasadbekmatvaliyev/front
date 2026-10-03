@@ -70,6 +70,7 @@ const state = {
 };
 
 const NAV_ITEMS = [
+  { id: "korean", label: "Koreys tili", icon: "한" },
   { id: "overview", label: "Dashboard", icon: "DB" },
   { id: "chats", label: "Chatlar", icon: "CH" },
   { id: "contacts", label: "Kontaktlar", icon: "KO" },
@@ -475,6 +476,7 @@ async function loadForView(view = state.view) {
     if (state.accessToken) {
       await loadMe();
     }
+    if (view === "korean" && state.data.koreanUnlocked) await loadKoreanAdmin();
     if (view === "overview") {
       await Promise.allSettled([
         loadChats(),
@@ -789,6 +791,7 @@ function renderSidebar() {
 }
 
 function renderView() {
+  if (state.view === "korean") return renderKorean();
   if (state.view === "chats") return renderChats();
   if (state.view === "contacts") return renderContacts();
   if (state.view === "markets") return renderMarkets();
@@ -2586,6 +2589,26 @@ async function handleSubmit(event) {
   const action = form.dataset.action;
   const values = formValues(form);
 
+  if (action === "korean-unlock") {
+    await withBusy(async () => {
+      state.data.koreanKey = values.key.trim();
+      state.data.koreanUnlocked = false;
+      await loadKoreanAdmin();
+    }, "Koreys tili boshqaruvi ochildi");
+    return;
+  }
+  if (action === "korean-save") {
+    const draft = koreanPayload(form, false);
+    draft.id = state.data.koreanEditing?.id;
+    state.data.koreanEditing = draft;
+    await withBusy(async () => {
+      const payload = koreanPayload(form);
+      const id = state.data.koreanEditing?.id;
+      state.data.koreanEditing = await api(`/korean/admin/lessons${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", auth: false, adminKey: state.data.koreanKey, body: payload });
+      await loadKoreanAdmin();
+    }, "Dars saqlandi");
+    return;
+  }
   if (action === "auth-send-otp") {
     await withBusy(async () => {
       state.authPhone = values.phone.trim();
@@ -2971,6 +2994,31 @@ async function handleClick(event) {
   if (!button) return;
   const action = button.dataset.action;
 
+  if (action.startsWith("korean-")) {
+    if (action === "korean-refresh") await withBusy(loadKoreanAdmin);
+    if (action === "korean-new") { state.data.koreanEditing = null; state.data.koreanDeleteConfirm = false; render(); }
+    if (action === "korean-edit") { state.data.koreanEditing = state.data.koreanLessons.find((x) => x.id === Number(button.dataset.lessonId)); state.data.koreanDeleteConfirm = false; render(); }
+    if (action === "korean-add-question") {
+      const form = button.closest("form");
+      const payload = koreanPayload(form, false);
+      payload.id = state.data.koreanEditing?.id;
+      if (payload.content.questions.length >= 30) return;
+      payload.content.questions.push({ kind: "reading", prompt: "", transcript: "", options: ["", "", ""], answer: 0, explanation: "" });
+      state.data.koreanEditing = payload; render();
+    }
+    if (action === "korean-delete-request" || action === "korean-delete-cancel") {
+      const payload = koreanPayload(button.closest("form"), false);
+      payload.id = state.data.koreanEditing?.id;
+      state.data.koreanEditing = payload;
+      state.data.koreanDeleteConfirm = action === "korean-delete-request"; render();
+    }
+    if (action === "korean-delete") await withBusy(async () => {
+      await api(`/korean/admin/lessons/${state.data.koreanEditing.id}`, { method: "DELETE", auth: false, adminKey: state.data.koreanKey });
+      state.data.koreanEditing = null; state.data.koreanDeleteConfirm = false;
+      await loadKoreanAdmin();
+    }, "Dars o‘chirildi");
+    return;
+  }
   if (action === "toggle-sidebar") {
     state.sidebarOpen = !state.sidebarOpen;
     render();
@@ -2985,6 +3033,7 @@ async function handleClick(event) {
   }
 
   if (action === "logout") {
+    state.data.koreanKey = ""; state.data.koreanUnlocked = false; state.data.koreanLessons = []; state.data.koreanEditing = null;
     await withBusy(async () => {
       if (state.refreshToken) {
         await api("/auth/logout", {
@@ -3549,3 +3598,69 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("beforeunload", closeSockets);
 
 boot();
+
+function renderKorean() {
+  const lesson = state.data.koreanEditing;
+  const content = lesson?.content || {};
+  const lines = (items) => (items || []).map((x) => `${x.korean} | ${x.uzbek}`).join("\n");
+  const questions = content.questions || [{ kind: "reading", prompt: "", transcript: "", options: ["", "", ""], answer: 0, explanation: "" }, { kind: "listening", prompt: "Tinglang va to‘g‘ri javobni tanlang.", transcript: "", options: ["", "", ""], answer: 0, explanation: "" }, { kind: "vocabulary", prompt: "", transcript: "", options: ["", "", ""], answer: 0, explanation: "" }];
+  return `<div class="korean-admin">
+    <div class="panel"><h2>한국어 · Koreys tili darslari</h2><p>TOPIK I · 1–2 daraja. Darslar Android Discover bo‘limida ko‘rinadi.</p>
+      <form class="form-grid" data-action="korean-unlock"><label>Admin kaliti<input name="key" type="password" autocomplete="off" required placeholder="Server admin kaliti"></label><button class="btn primary">Darslarni boshqarish</button></form>
+      <p class="muted">Kalit ushbu sahifa ochiq turgan paytda ishlatiladi. Darsni nashr qilishdan oldin misol va javoblarni tekshiring.</p>
+    </div>
+    ${state.data.koreanUnlocked ? `<div class="panel"><div class="actions"><button class="btn primary" data-action="korean-new">+ Yangi dars</button><button class="btn" data-action="korean-refresh">Yangilash</button></div>
+      <div class="korean-lesson-list">${(state.data.koreanLessons || []).map((x) => `<button class="item" data-action="korean-edit" data-lesson-id="${x.id}"><strong>${x.level}-daraja · ${x.position}. ${escapeHtml(x.title)}</strong><span>${x.published ? "Nashr qilingan" : "Qoralama"}</span></button>`).join("") || '<p>Hozircha dars yo‘q. Yangi dars yarating.</p>'}</div></div>
+    <div class="panel"><h3>${lesson?.id ? "Darsni tahrirlash" : "Yangi dars"}</h3>
+      <form class="form-grid" data-action="korean-save">
+        <label>Dars nomi<input name="title" required maxlength="160" value="${escapeHtml(lesson?.title || "")}"></label>
+        <div class="korean-fields"><label>Daraja<select name="level"><option value="1" ${lesson?.level !== 2 ? "selected" : ""}>1-daraja</option><option value="2" ${lesson?.level === 2 ? "selected" : ""}>2-daraja</option></select></label>
+        <label>Tartib<input name="position" type="number" min="1" max="999" required value="${lesson?.position || 1}"></label></div>
+        <label><input name="published" type="checkbox" ${lesson?.published ? "checked" : ""}> Android’da nashr qilish</label>
+        <label>Dars maqsadi<textarea name="objective" required>${escapeHtml(content.objective || "")}</textarea></label>
+        <label>Grammatika va o‘zbekcha tushuntirish<textarea name="explanation" rows="8" required>${escapeHtml(content.explanation || "")}</textarea></label>
+        <p>Har qatorda koreyscha matn va o‘zbekcha ma’noni | bilan ajrating. Masalan: 학교 | maktab</p>
+        <label>Lug‘at<textarea name="vocabulary" rows="6" required>${escapeHtml(lines(content.vocabulary))}</textarea></label>
+        <label>Misollar<textarea name="examples" rows="4" required>${escapeHtml(lines(content.examples))}</textarea></label>
+        <label>Dialog (har qatorda bitta navbat)<textarea name="dialogue" rows="4" required>${escapeHtml(lines(content.dialogue))}</textarea></label>
+        <label>Mustaqil mashq<textarea name="practice" rows="3" required>${escapeHtml(content.practice || "")}</textarea></label>
+        <h3>Tekshiruvchi savollar</h3>
+        ${questions.map((q, i) => `<fieldset class="korean-question"><legend>${i + 1}-savol</legend>
+          <label>Mashq turi<select name="q${i}_kind">${[["reading", "O‘qish"], ["listening", "Tinglash"], ["grammar", "Grammatika"], ["vocabulary", "Lug‘at"]].map(([v, l]) => `<option value="${v}" ${q.kind === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          <label>Savol<textarea name="q${i}_prompt" required>${escapeHtml(q.prompt)}</textarea></label>
+          <label>Tinglash uchun koreyscha matn<textarea name="q${i}_transcript">${escapeHtml(q.transcript || "")}</textarea></label>
+          <label>Javob variantlari (har qatorda bitta, 2–4 ta)<textarea name="q${i}_options" required rows="4">${escapeHtml(q.options.join("\n"))}</textarea></label>
+          <label>To‘g‘ri javob raqami<input name="q${i}_answer" type="number" min="1" max="4" required value="${q.answer + 1}"></label>
+          <label>Javob izohi<textarea name="q${i}_explanation" required>${escapeHtml(q.explanation)}</textarea></label>
+        </fieldset>`).join("")}
+        <input type="hidden" name="questionCount" value="${questions.length}">
+        <div class="actions"><button class="btn primary" type="submit">Darsni saqlash</button><button class="btn" type="button" data-action="korean-add-question">+ Savol</button>${lesson?.id ? '<button class="btn danger" type="button" data-action="korean-delete-request">Darsni o‘chirish</button>' : ""}</div>
+        ${state.data.koreanDeleteConfirm ? '<p>Dars va unga tegishli o‘quvchi natijalari o‘chadi.</p><button class="btn danger" type="button" data-action="korean-delete">O‘chirishni tasdiqlash</button><button class="btn" type="button" data-action="korean-delete-cancel">Bekor qilish</button>' : ""}
+      </form>
+    </div>` : ""}
+  </div>`;
+}
+
+async function loadKoreanAdmin() {
+  const rows = await api("/korean/admin/lessons", { adminKey: state.data.koreanKey, auth: false });
+  state.data.koreanLessons = rows;
+  state.data.koreanUnlocked = true;
+}
+
+function koreanPayload(form, validate = true) {
+  const values = formValues(form);
+  const pairs = (name) => values[name].split("\n").filter((x) => x.trim()).map((line) => {
+    const split = line.indexOf("|");
+    if (validate && (split < 1 || !line.slice(split + 1).trim())) throw new Error(`${name}: har qatorda koreyscha | o‘zbekcha yozing`);
+    return { korean: line.slice(0, split).trim(), uzbek: line.slice(split + 1).trim() };
+  });
+  const questions = Array.from({ length: Number(values.questionCount) }, (_, i) => {
+    const options = values[`q${i}_options`].split("\n").filter((x) => x.trim()).map((x) => x.trim());
+    const answer = Number(values[`q${i}_answer`]) - 1;
+    const kind = values[`q${i}_kind`];
+    if (validate && (options.length < 2 || options.length > 4 || answer < 0 || answer >= options.length)) throw new Error(`${i + 1}-savolda variantlar yoki to‘g‘ri javob raqami xato`);
+    if (validate && kind === "listening" && !values[`q${i}_transcript`].trim()) throw new Error(`${i + 1}-savolga koreyscha tinglash matni yozing`);
+    return { kind, options, answer, prompt: values[`q${i}_prompt`].trim(), transcript: values[`q${i}_transcript`].trim(), explanation: values[`q${i}_explanation`].trim() };
+  });
+  return { title: values.title.trim(), level: Number(values.level), position: Number(values.position), published: checked(form, "published"), content: { objective: values.objective.trim(), explanation: values.explanation.trim(), vocabulary: pairs("vocabulary"), examples: pairs("examples"), dialogue: pairs("dialogue"), practice: values.practice.trim(), questions } };
+}

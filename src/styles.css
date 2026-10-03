@@ -1885,3 +1885,13 @@ th {
     white-space: normal;
   }
 }
+
+/* Korean curriculum administration */
+.korean-admin { display:grid; gap:20px; max-width:1100px; margin:auto; }
+.korean-lesson-list { display:grid; gap:8px; margin-top:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+.korean-lesson-list .item { display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; }
+.korean-fields { display:grid; gap:16px; grid-template-columns:1fr 1fr; }
+.korean-question { display:grid; gap:12px; padding:18px; border:1px solid var(--border, #dce5ec); border-radius:12px; }
+.korean-admin textarea { width:100%; font-family:inherit; }
+.korean-admin input[type=checkbox] { width:auto; }
+@media(max-width:600px) { .korean-fields { grid-template-columns:1fr; } }
